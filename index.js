@@ -1,3 +1,4 @@
+require('dotenv').config()
 const axios = require('axios')
 const WebSocket = require('ws')
 const Promise = require('bluebird')
@@ -7,7 +8,7 @@ const {
   pluck
 } = require('ramda')
 
-const token = ''
+const token = process.env.TOKEN
 
 const slack = axios.create({
   baseURL: 'https://slack.com/api/',
