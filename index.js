@@ -28,14 +28,17 @@ const targets = [
 ]
 
 const addReacts = async (channel, messageTs, reacts) => {
-  await Promise.each(reacts, react => slack.post(
-    '/reactions.add',
-    {
-      name: react,
-      channel,
-      timestamp: messageTs,
-    }
-  ))
+  await Promise.each(reacts, async (react) => {
+    await slack.post(
+      '/reactions.add',
+      {
+        name: react,
+        channel,
+        timestamp: messageTs,
+      }
+    )
+    await Promise.delay(100)
+  })
 }
 
 const flattenReacts = pipe(
