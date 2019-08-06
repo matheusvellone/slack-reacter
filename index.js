@@ -1,6 +1,11 @@
 const axios = require('axios')
 const WebSocket = require('ws')
 const Promise = require('bluebird')
+const {
+  flatten,
+  pipe,
+  pluck
+} = require('ramda')
 
 const token = ''
 
@@ -11,11 +16,17 @@ const slack = axios.create({
   },
 })
 
-const targetUserId = ''
+const targets = [
+  {
+    users: ['USER_ID'],
+    channels: ['CHANNEL_ID'],
+    reacts: [
+      'thumbsup',
+    ],
+  },
+]
 
-const reacts = []
-
-const addReacts = async (channel, messageTs) => {
+const addReacts = async (channel, messageTs, reacts) => {
   await Promise.each(reacts, react => slack.post(
     '/reactions.add',
     {
@@ -26,6 +37,27 @@ const addReacts = async (channel, messageTs) => {
   ))
 }
 
+const flattenReacts = pipe(
+  pluck('reacts'),
+  flatten
+)
+
+const getReacts = (message) => {
+  const matches = targets.filter((target) => {
+    if (target.users && !target.users.includes(message.user)) {
+      return false
+    }
+
+    if (target.channels && !target.channels.includes(message.channel)) {
+      return false
+    }
+
+    return true
+  })
+
+  return flattenReacts(matches)
+}
+
 const run = async () => {
   const { data } = await slack.get('/rtm.connect')
 
@@ -33,10 +65,13 @@ const run = async () => {
 
   ws.on('message', (wsDataRaw) => {
     const wsData = JSON.parse(wsDataRaw)
-    if (wsData.user !== targetUserId) {
-      return
+    
+    const reacts = getReacts(wsData)
+
+    if (reacts.length) {
+      console.log('Reagindo à mensagem')
+      addReacts(wsData.channel, wsData.ts, reacts)
     }
-    addReacts(wsData.channel, wsData.ts)
   })
 }
 
