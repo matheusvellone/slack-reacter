@@ -1,81 +1,68 @@
 require('dotenv').config()
-const axios = require('axios')
 const WebSocket = require('ws')
 const Promise = require('bluebird')
-const {
-  flatten,
-  pipe,
-  pluck
-} = require('ramda')
+const slack = require('./slack')
 
-const token = process.env.TOKEN
-
-const slack = axios.create({
-  baseURL: 'https://slack.com/api/',
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-})
-
-const targets = [
+const actions = [
   {
-    users: ['USER_ID'],
-    channels: ['CHANNEL_ID'],
-    reacts: [
-      'thumbsup',
-    ],
+    filter: {
+      previous_message: {
+        users: ['U7EA86QV7'],
+      },
+      types: ['message'],
+      subtypes: ['message_deleted'],
+    },
+    action: (message) => {
+      console.log(message)
+    },
   },
 ]
 
-const addReacts = async (channel, messageTs, reacts) => {
-  await Promise.each(reacts, async (react) => {
-    await slack.post(
-      '/reactions.add',
-      {
-        name: react,
-        channel,
-        timestamp: messageTs,
-      }
-    )
-    await Promise.delay(100)
-  })
+const filterAction = (message, filter) => {
+  if (filter.users && !filter.users.includes(message.user)) {
+    return false
+  }
+
+  if (filter.channels && !filter.channels.includes(message.channel)) {
+    return false
+  }
+
+  if (filter.types && !filter.types.includes(message.type)) {
+    return false
+  }
+
+  if (filter.subtypes && !filter.subtypes.includes(message.subtype)) {
+    return false
+  }
+
+  return true
 }
 
-const flattenReacts = pipe(
-  pluck('reacts'),
-  flatten
-)
+const getActions = message => actions.filter(({ filter = {} }) => {
+  if (filter.previous_message) {
+    const previousMessageFilter = filter.previous_message
 
-const getReacts = (message) => {
-  const matches = targets.filter((target) => {
-    if (target.users && !target.users.includes(message.user)) {
-      return false
+    const previousMessageFilterResult = filterAction(message, previousMessageFilter)
+
+    if (!previousMessageFilterResult) {
+      return previousMessageFilterResult
     }
+  }
 
-    if (target.channels && !target.channels.includes(message.channel)) {
-      return false
-    }
-
-    return true
-  })
-
-  return flattenReacts(matches)
-}
+  return filterAction(message, filter)
+})
 
 const run = async () => {
   const { data } = await slack.get('/rtm.connect')
 
   const ws = new WebSocket(data.url)
 
-  ws.on('message', (wsDataRaw) => {
-    const wsData = JSON.parse(wsDataRaw)
+  ws.on('message', async (messageRaw) => {
+    const message = JSON.parse(messageRaw)
     
-    const reacts = getReacts(wsData)
+    const actions = getActions(message)
 
-    if (reacts.length) {
-      console.log('Reagindo à mensagem')
-      addReacts(wsData.channel, wsData.ts, reacts)
-    }
+    Promise.each(actions, (action) => action.action(message))
   })
 }
 
